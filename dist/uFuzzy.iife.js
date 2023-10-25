@@ -1,13 +1,3 @@
-function _toConsumableArray(arr) { return _arrayWithoutHoles(arr) || _iterableToArray(arr) || _unsupportedIterableToArray(arr) || _nonIterableSpread(); }
-function _nonIterableSpread() { throw new TypeError("Invalid attempt to spread non-iterable instance.\nIn order to be iterable, non-array objects must have a [Symbol.iterator]() method."); }
-function _iterableToArray(iter) { if (typeof Symbol !== "undefined" && iter[Symbol.iterator] != null || iter["@@iterator"] != null) return Array.from(iter); }
-function _arrayWithoutHoles(arr) { if (Array.isArray(arr)) return _arrayLikeToArray(arr); }
-function _slicedToArray(arr, i) { return _arrayWithHoles(arr) || _iterableToArrayLimit(arr, i) || _unsupportedIterableToArray(arr, i) || _nonIterableRest(); }
-function _nonIterableRest() { throw new TypeError("Invalid attempt to destructure non-iterable instance.\nIn order to be iterable, non-array objects must have a [Symbol.iterator]() method."); }
-function _unsupportedIterableToArray(o, minLen) { if (!o) return; if (typeof o === "string") return _arrayLikeToArray(o, minLen); var n = Object.prototype.toString.call(o).slice(8, -1); if (n === "Object" && o.constructor) n = o.constructor.name; if (n === "Map" || n === "Set") return Array.from(o); if (n === "Arguments" || /^(?:Ui|I)nt(?:8|16|32)(?:Clamped)?Array$/.test(n)) return _arrayLikeToArray(o, minLen); }
-function _arrayLikeToArray(arr, len) { if (len == null || len > arr.length) len = arr.length; for (var i = 0, arr2 = new Array(len); i < len; i++) arr2[i] = arr[i]; return arr2; }
-function _iterableToArrayLimit(r, l) { var t = null == r ? null : "undefined" != typeof Symbol && r[Symbol.iterator] || r["@@iterator"]; if (null != t) { var e, n, i, u, a = [], f = !0, o = !1; try { if (i = (t = t.call(r)).next, 0 === l) { if (Object(t) !== t) return; f = !1; } else for (; !(f = (e = i.call(t)).done) && (a.push(e.value), a.length !== l); f = !0); } catch (r) { o = !0, n = r; } finally { try { if (!f && null != t["return"] && (u = t["return"](), Object(u) !== u)) return; } finally { if (o) throw n; } } return a; } }
-function _arrayWithHoles(arr) { if (Array.isArray(arr)) return arr; }
 /**
 * Copyright (c) 2023, Leon Sorokin
 * All rights reserved. (MIT Licensed)
@@ -232,9 +222,8 @@ var uFuzzy = function () {
             intraDel = _intraRules.intraDel;
           if (intraIns + intraSub + intraTrn + intraDel == 0) return p + contrs[pi];
           if (p[0] === '"') return escapeRegExp(p.slice(1, -1));
-          var _intraSlice2 = _slicedToArray(intraSlice, 2),
-            lftIdx = _intraSlice2[0],
-            rgtIdx = _intraSlice2[1];
+          var lftIdx = intraSlice[0];
+          var rgtIdx = intraSlice[1];
           var lftChar = p.slice(0, lftIdx); // prefix
           var rgtChar = p.slice(rgtIdx); // suffix
 
@@ -322,9 +311,7 @@ var uFuzzy = function () {
       return [new RegExp(reTpl, 'i' + uFlag), parts, contrs];
     };
     var filter = function filter(haystack, needle, idxs) {
-      var _prepQuery = prepQuery(needle),
-        _prepQuery2 = _slicedToArray(_prepQuery, 1),
-        query = _prepQuery2[0];
+      var query = prepQuery(needle)[0];
       if (query == null) return null;
       var out = [];
       if (idxs != null) {
@@ -341,14 +328,11 @@ var uFuzzy = function () {
     var interBound = new RegExp(_interSplit, uFlag);
     var intraBound = new RegExp(_intraBound, uFlag);
     var info = function info(idxs, haystack, needle) {
-      var _prepQuery3 = prepQuery(needle, 1),
-        _prepQuery4 = _slicedToArray(_prepQuery3, 3),
-        query = _prepQuery4[0],
-        parts = _prepQuery4[1],
-        contrs = _prepQuery4[2];
-      var _prepQuery5 = prepQuery(needle, 2),
-        _prepQuery6 = _slicedToArray(_prepQuery5, 1),
-        queryR = _prepQuery6[0];
+      var _prepQuery = prepQuery(needle, 1);
+      var query = _prepQuery[0];
+      var parts = _prepQuery[1];
+      var contrs = _prepQuery[2];
+      var queryR = prepQuery(needle, 2)[0];
       var partsLen = parts.length;
       var len = idxs.length;
       var field = Array(len).fill(0);
@@ -599,9 +583,9 @@ var uFuzzy = function () {
 
     // returns [idxs, info, order]
     var _search = function _search(haystack, needle, outOfOrder) {
-      var _ref;
       var infoThresh = arguments.length > 3 && arguments[3] !== undefined ? arguments[3] : 1e3;
       var preFiltered = arguments.length > 4 ? arguments[4] : undefined;
+      var _ref;
       outOfOrder = !outOfOrder ? 0 : outOfOrder === true ? OOO_TERMS_LIMIT : outOfOrder;
       var needles = null;
       var matches = null;
@@ -716,7 +700,7 @@ var uFuzzy = function () {
           retOrder = retOrder.concat(order);
         }
       }
-      return [(_ref = []).concat.apply(_ref, _toConsumableArray(matches)), retInfo, retOrder];
+      return [(_ref = []).concat.apply(_ref, matches), retInfo, retOrder];
     };
     return {
       search: function search() {
@@ -820,7 +804,7 @@ var uFuzzy = function () {
   }
   uFuzzy.latinize = latinize;
   uFuzzy.permute = function (arr) {
-    var idxs = permute(_toConsumableArray(Array(arr.length).keys())).sort(function (a, b) {
+    var idxs = permute(Array.from(Array(arr.length).keys())).sort(function (a, b) {
       for (var i = 0; i < a.length; i++) {
         if (a[i] != b[i]) return a[i] - b[i];
       }

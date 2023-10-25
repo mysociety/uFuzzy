@@ -248,7 +248,8 @@ export default function uFuzzy(opts) {
 				if (p[0] === '"')
 					return escapeRegExp(p.slice(1, -1));
 
-				let [lftIdx, rgtIdx] = intraSlice;
+				let lftIdx = intraSlice[0];
+				let rgtIdx = intraSlice[1];
 				let lftChar = p.slice(0, lftIdx); // prefix
 				let rgtChar = p.slice(rgtIdx);    // suffix
 
@@ -353,7 +354,7 @@ export default function uFuzzy(opts) {
 	const filter = (haystack, needle, idxs) => {
 		DEBUG && console.time('filter');
 
-		let [query] = prepQuery(needle);
+		let query = prepQuery(needle)[0];
 
 		if (query == null)
 			return null;
@@ -384,8 +385,11 @@ export default function uFuzzy(opts) {
 	const info = (idxs, haystack, needle) => {
 		DEBUG && console.time('info');
 
-		let [query, parts, contrs] = prepQuery(needle, 1);
-		let [queryR] = prepQuery(needle, 2);
+		let _prepQuery = prepQuery(needle, 1);
+		let query = _prepQuery[0];
+		let parts = _prepQuery[1];
+		let contrs = _prepQuery[2];
+		let queryR = prepQuery(needle, 2)[0];
 		let partsLen = parts.length;
 
 		let len = idxs.length;
@@ -700,6 +704,7 @@ export default function uFuzzy(opts) {
 
 	// returns [idxs, info, order]
 	const _search = (haystack, needle, outOfOrder, infoThresh = 1e3, preFiltered) => {
+		var _ref;
 		outOfOrder = !outOfOrder ? 0 : outOfOrder === true ? OOO_TERMS_LIMIT : outOfOrder;
 
 		let needles = null;
@@ -839,7 +844,7 @@ export default function uFuzzy(opts) {
 		}
 
 		return [
-			[].concat(...matches),
+			(_ref = []).concat.apply(_ref, matches),
 			retInfo,
 			retOrder,
 		];
@@ -953,7 +958,7 @@ function highlight(str, ranges, mark = _mark, accum = '', append = _append) {
 
 uFuzzy.latinize = latinize;
 uFuzzy.permute = arr => {
-	let idxs = permute([...Array(arr.length).keys()]).sort((a,b) => {
+	let idxs = permute(Array.from(Array(arr.length).keys())).sort((a,b) => {
 		for (let i = 0; i < a.length; i++) {
 			if (a[i] != b[i])
 				return a[i] - b[i];
