@@ -38,6 +38,9 @@
   },
   "homepage": "https://github.com/leeoniya/uFuzzy#readme",
   "devDependencies": {
+    "@babel/core": "^7.23.2",
+    "@babel/preset-env": "^7.23.2",
+    "@rollup/plugin-babel": "^6.0.4",
     "@rollup/plugin-terser": "^0.4.4",
     "rollup": "^4.1.4"
   }

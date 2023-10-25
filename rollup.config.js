@@ -1,6 +1,7 @@
 const fs = require('fs');
 
 import terser from '@rollup/plugin-terser';
+import { getBabelOutputPlugin } from '@rollup/plugin-babel';
 
 const pkg = JSON.parse(fs.readFileSync('./package.json', 'utf8'));
 const ver = "v" + pkg.version;
@@ -80,6 +81,7 @@ export default [
 		},
 		plugins: [
 			bannerlessESM(),
+			getBabelOutputPlugin({ allowAllFormats: true, presets: ['@babel/preset-env'] }),
 		]
 	},
 	{
@@ -93,6 +95,7 @@ export default [
 		},
 		plugins: [
 			bannerlessESM(),
+			getBabelOutputPlugin({ allowAllFormats: true, presets: ['@babel/preset-env'] }),
 			terser(terserOpts),
 		]
 	},
