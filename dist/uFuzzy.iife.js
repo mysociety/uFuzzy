@@ -20,157 +20,53 @@ var uFuzzy = function () {
 
   // meh, magic tmp placeholder, must be tolerant to toLocaleLowerCase(), interSplit, and intraSplit
   var EXACT_HERE = 'eexxaacctt';
-  var LATIN_UPPER = 'A-Z';
-  var LATIN_LOWER = 'a-z';
-  var swapAlpha = function swapAlpha(str, upper, lower) {
-    return str.replace(LATIN_UPPER, upper).replace(LATIN_LOWER, lower);
-  };
-  var OPTS = {
-    // whether regexps use a /u unicode flag
-    unicode: false,
-    alpha: null,
-    // term segmentation & punct/whitespace merging
-    interSplit: "[^A-Za-z\\d']+",
-    intraSplit: "[a-z][A-Z]",
-    // intra bounds that will be used to increase lft1/rgt1 info counters
-    intraBound: "[A-Za-z]\\d|\\d[A-Za-z]|[a-z][A-Z]",
-    // inter-bounds mode
-    // 2 = strict (will only match 'man' on whitepace and punct boundaries: Mega Man, Mega_Man, mega.man)
-    // 1 = loose  (plus allowance for alpha-num and case-change boundaries: MegaMan, 0007man)
-    // 0 = any    (will match 'man' as any substring: megamaniac)
-    interLft: 0,
-    interRgt: 0,
-    // allowance between terms
-    interChars: '.',
-    interIns: inf,
-    // allowance between chars in terms
-    intraChars: "[a-z\\d']",
-    // internally case-insensitive
-    intraIns: 0,
-    intraContr: "'[a-z]{1,2}\\b",
-    // multi-insert or single-error mode
-    intraMode: 0,
-    // single-error bounds for errors within terms, default requires exact first char
-    intraSlice: [1, inf],
-    // single-error tolerance toggles
-    intraSub: 0,
-    intraTrn: 0,
-    intraDel: 0,
-    // can post-filter matches that are too far apart in distance or length
-    // (since intraIns is between each char, it can accum to nonsense matches)
-    intraFilt: function intraFilt(term, match, index) {
-      return true;
-    },
-    // should this also accept WIP info?
+  var sort = function sort(info, haystack, needle) {
+    var idx = info.idx,
+      chars = info.chars,
+      terms = info.terms,
+      interLft2 = info.interLft2,
+      interLft1 = info.interLft1,
+      start = info.start,
+      intraIns = info.intraIns,
+      interIns = info.interIns;
+    return idx.map(function (v, i) {
+      return i;
+    }).sort(function (ia, ib) {
+      return (
+        // most contig chars matched
+        chars[ib] - chars[ia] ||
+        // least char intra-fuzz (most contiguous)
+        intraIns[ia] - intraIns[ib] ||
+        // most prefix bounds, boosted by full term matches
 
-    // final sorting fn
-    sort: function sort(info, haystack, needle) {
-      var idx = info.idx,
-        chars = info.chars,
-        terms = info.terms,
-        interLft2 = info.interLft2,
-        interLft1 = info.interLft1,
-        start = info.start,
-        intraIns = info.intraIns,
-        interIns = info.interIns;
-      return idx.map(function (v, i) {
-        return i;
-      }).sort(function (ia, ib) {
-        return (
-          // most contig chars matched
-          chars[ib] - chars[ia] ||
-          // least char intra-fuzz (most contiguous)
-          intraIns[ia] - intraIns[ib] ||
-          // most prefix bounds, boosted by full term matches
-
-          terms[ib] + interLft2[ib] + 0.5 * interLft1[ib] - (terms[ia] + interLft2[ia] + 0.5 * interLft1[ia]) ||
-          // highest density of match (least span)
-          //	span[ia] - span[ib] ||
-          // highest density of match (least term inter-fuzz)
-          interIns[ia] - interIns[ib] ||
-          // earliest start of match
-          start[ia] - start[ib] ||
-          // alphabetic
-          cmp(haystack[idx[ia]], haystack[idx[ib]])
-        );
-      });
-    }
+        terms[ib] + interLft2[ib] + 0.5 * interLft1[ib] - (terms[ia] + interLft2[ia] + 0.5 * interLft1[ia]) ||
+        // highest density of match (least span)
+        //	span[ia] - span[ib] ||
+        // highest density of match (least term inter-fuzz)
+        interIns[ia] - interIns[ib] ||
+        // earliest start of match
+        start[ia] - start[ib] ||
+        // alphabetic
+        cmp(haystack[idx[ia]], haystack[idx[ib]])
+      );
+    });
   };
   var lazyRepeat = function lazyRepeat(chars, limit) {
     return limit == 0 ? '' : limit == 1 ? chars + '??' : limit == inf ? chars + '*?' : chars + "{0,".concat(limit, "}?");
   };
-  var mode2Tpl = '(?:\\b|_)';
-  function uFuzzy(opts) {
-    var _opts$letters;
-    opts = Object.assign({}, OPTS, opts);
-    var _opts = opts,
-      unicode = _opts.unicode,
-      interLft = _opts.interLft,
-      interRgt = _opts.interRgt,
-      intraMode = _opts.intraMode,
-      intraSlice = _opts.intraSlice,
-      intraIns = _opts.intraIns,
-      intraSub = _opts.intraSub,
-      intraTrn = _opts.intraTrn,
-      intraDel = _opts.intraDel,
-      intraContr = _opts.intraContr,
-      _intraSplit = _opts.intraSplit,
-      _interSplit = _opts.interSplit,
-      _intraBound = _opts.intraBound,
-      intraChars = _opts.intraChars;
-    var alpha = (_opts$letters = opts.letters) !== null && _opts$letters !== void 0 ? _opts$letters : opts.alpha;
-    if (alpha != null) {
-      var upper = alpha.toLocaleUpperCase();
-      var lower = alpha.toLocaleLowerCase();
-      _interSplit = swapAlpha(_interSplit, upper, lower);
-      _intraSplit = swapAlpha(_intraSplit, upper, lower);
-      _intraBound = swapAlpha(_intraBound, upper, lower);
-      intraChars = swapAlpha(intraChars, upper, lower);
-      intraContr = swapAlpha(intraContr, upper, lower);
-    }
-    var uFlag = unicode ? 'u' : '';
+  function uFuzzy() {
+    var _interSplit = "[^A-Za-z\\d']+";
+    var _intraSplit = "[a-z][A-Z]";
+    var _intraBound = "[A-Za-z]\\d|\\d[A-Za-z]|[a-z][A-Z]";
+    var interChars = '.';
+    var interIns = inf;
+    var intraChars = "[a-z\\d']";
+    var intraIns = 0;
+    var intraContr = "'[a-z]{1,2}\\b";
+    var uFlag = '';
     var quotedAny = '".+?"';
     var EXACTS_RE = new RegExp(quotedAny, 'gi' + uFlag);
     var NEGS_RE = new RegExp("(?:\\s+|^)-(?:".concat(intraChars, "+|").concat(quotedAny, ")"), 'gi' + uFlag);
-    var _opts2 = opts,
-      intraRules = _opts2.intraRules;
-    if (intraRules == null) {
-      intraRules = function intraRules(p) {
-        // default is exact term matches only
-        var _intraSlice = OPTS.intraSlice,
-          // requires first char
-          _intraIns = 0,
-          _intraSub = 0,
-          _intraTrn = 0,
-          _intraDel = 0;
-        var plen = p.length;
-
-        // prevent junk matches by requiring stricter rules for short terms
-        if (plen <= 4) {
-          if (plen >= 3) {
-            // one swap in non-first char when 3-4 chars
-            _intraTrn = Math.min(intraTrn, 1);
-
-            // or one insertion when 4 chars
-            if (plen == 4) _intraIns = Math.min(intraIns, 1);
-          }
-          // else exact match when 1-2 chars
-        }
-        // use supplied opts
-        else {
-          _intraSlice = intraSlice;
-          _intraIns = intraIns, _intraSub = intraSub, _intraTrn = intraTrn, _intraDel = intraDel;
-        }
-        return {
-          intraSlice: _intraSlice,
-          intraIns: _intraIns,
-          intraSub: _intraSub,
-          intraTrn: _intraTrn,
-          intraDel: _intraDel
-        };
-      };
-    }
-    var withIntraSplit = !!_intraSplit;
     var intraSplit = new RegExp(_intraSplit, 'g' + uFlag);
     var interSplit = new RegExp(_interSplit, 'g' + uFlag);
     var trimRe = new RegExp('^' + _interSplit + '|' + _interSplit + '$', 'g' + uFlag);
@@ -182,7 +78,7 @@ var uFuzzy = function () {
         return EXACT_HERE;
       });
       needle = needle.replace(trimRe, '').toLocaleLowerCase();
-      if (withIntraSplit) needle = needle.replace(intraSplit, function (m) {
+      needle = needle.replace(intraSplit, function (m) {
         return m[0] + ' ' + m[1];
       });
       var j = 0;
@@ -212,58 +108,7 @@ var uFuzzy = function () {
       var reTpl;
 
       // allows single mutations within each term
-      if (intraMode == 1) {
-        reTpl = parts.map(function (p, pi) {
-          var _intraRules = intraRules(p),
-            intraSlice = _intraRules.intraSlice,
-            intraIns = _intraRules.intraIns,
-            intraSub = _intraRules.intraSub,
-            intraTrn = _intraRules.intraTrn,
-            intraDel = _intraRules.intraDel;
-          if (intraIns + intraSub + intraTrn + intraDel == 0) return p + contrs[pi];
-          if (p[0] === '"') return escapeRegExp(p.slice(1, -1));
-          var lftIdx = intraSlice[0];
-          var rgtIdx = intraSlice[1];
-          var lftChar = p.slice(0, lftIdx); // prefix
-          var rgtChar = p.slice(rgtIdx); // suffix
-
-          var chars = p.slice(lftIdx, rgtIdx);
-
-          // neg lookahead to prefer matching 'Test' instead of 'tTest' in ManifestTest or fittest
-          // but skip when search term contains leading repetition (aardvark, aaa)
-          if (intraIns == 1 && lftChar.length == 1 && lftChar != chars[0]) lftChar += '(?!' + lftChar + ')';
-          var numChars = chars.length;
-          var variants = [p];
-
-          // variants with single char substitutions
-          if (intraSub) {
-            for (var i = 0; i < numChars; i++) variants.push(lftChar + chars.slice(0, i) + intraChars + chars.slice(i + 1) + rgtChar);
-          }
-
-          // variants with single transpositions
-          if (intraTrn) {
-            for (var _i = 0; _i < numChars - 1; _i++) {
-              if (chars[_i] != chars[_i + 1]) variants.push(lftChar + chars.slice(0, _i) + chars[_i + 1] + chars[_i] + chars.slice(_i + 2) + rgtChar);
-            }
-          }
-
-          // variants with single char omissions
-          if (intraDel) {
-            for (var _i2 = 0; _i2 < numChars; _i2++) variants.push(lftChar + chars.slice(0, _i2 + 1) + '?' + chars.slice(_i2 + 1) + rgtChar);
-          }
-
-          // variants with single char insertions
-          if (intraIns) {
-            var intraInsTpl = lazyRepeat(intraChars, 1);
-            for (var _i3 = 0; _i3 < numChars; _i3++) variants.push(lftChar + chars.slice(0, _i3) + intraInsTpl + chars.slice(_i3) + rgtChar);
-          }
-          var reTpl = '(?:' + variants.join('|') + ')' + contrs[pi];
-
-          //	console.log(reTpl);
-
-          return reTpl;
-        });
-      } else {
+      {
         var intraInsTpl = lazyRepeat(intraChars, intraIns);
 
         // capture at char level
@@ -274,9 +119,6 @@ var uFuzzy = function () {
         }
         reTpl = parts.map(function (p, pi) {
           return p[0] === '"' ? escapeRegExp(p.slice(1, -1)) : p.split('').map(function (c, i, chars) {
-            // neg lookahead to prefer matching 'Test' instead of 'tTest' in ManifestTest or fittest
-            // but skip when search term contains leading repetition (aardvark, aaa)
-            if (intraIns == 1 && i == 0 && chars.length > 1 && c != chars[i + 1]) c += '(?!' + c + ')';
             return c;
           }).join(intraInsTpl) + contrs[pi];
         });
@@ -286,9 +128,9 @@ var uFuzzy = function () {
 
       // this only helps to reduce initial matches early when they can be detected
       // TODO: might want a mode 3 that excludes _
-      var preTpl = interLft == 2 ? mode2Tpl : '';
-      var sufTpl = interRgt == 2 ? mode2Tpl : '';
-      var interCharsTpl = sufTpl + lazyRepeat(opts.interChars, opts.interIns) + preTpl;
+      var preTpl = '';
+      var sufTpl = '';
+      var interCharsTpl = sufTpl + lazyRepeat(interChars, interIns) + preTpl;
 
       // capture at word level
       if (capt > 0) {
@@ -320,11 +162,10 @@ var uFuzzy = function () {
           query.test(haystack[idx]) && out.push(idx);
         }
       } else {
-        for (var _i4 = 0; _i4 < haystack.length; _i4++) query.test(haystack[_i4]) && out.push(_i4);
+        for (var _i = 0; _i < haystack.length; _i++) query.test(haystack[_i]) && out.push(_i);
       }
       return out;
     };
-    var withIntraBound = !!_intraBound;
     var interBound = new RegExp(_interSplit, uFlag);
     var intraBound = new RegExp(_intraBound, uFlag);
     var info = function info(idxs, haystack, needle) {
@@ -362,9 +203,6 @@ var uFuzzy = function () {
         interRgt1: field.slice(),
         ranges: Array(len)
       };
-
-      // might discard idxs based on bounds checks
-      var mayDiscard = interLft == 1 || interRgt == 1;
       var ii = 0;
       for (var i = 0; i < idxs.length; i++) {
         var mhstr = haystack[idxs[i]];
@@ -375,9 +213,6 @@ var uFuzzy = function () {
         // leading junk
         var start = m.index + m[1].length;
         var idxAcc = start;
-        //	let span = m[0].length;
-
-        var disc = false;
         var lft2 = 0;
         var lft1 = 0;
         var rgt2 = 0;
@@ -409,7 +244,7 @@ var uFuzzy = function () {
               if (j == 0) start = idxAcc;
             }
           }
-          if (mayDiscard || fullMatch) {
+          if (fullMatch) {
             // does group's left and/or right land on \b
             var lftCharIdx = idxAcc - 1;
             var rgtCharIdx = idxAcc + groupLen;
@@ -421,54 +256,9 @@ var uFuzzy = function () {
               fullMatch && lft2++;
               isPre = true;
             } else {
-              if (interLft == 2) {
-                disc = true;
-                break;
-              }
-              if (withIntraBound && intraBound.test(mhstr[lftCharIdx] + mhstr[lftCharIdx + 1])) {
+              if (intraBound.test(mhstr[lftCharIdx] + mhstr[lftCharIdx + 1])) {
                 fullMatch && lft1++;
                 isPre = true;
-              } else {
-                if (interLft == 1) {
-                  // regexps are eager, so try to improve the match by probing forward inter junk for exact match at a boundary
-                  var junk = m[k + 1];
-                  var junkIdx = idxAcc + groupLen;
-                  if (junk.length >= termLen) {
-                    var _idxOf = 0;
-                    var found = false;
-                    var re = new RegExp(term, 'ig' + uFlag);
-                    var m2 = void 0;
-                    while (m2 = re.exec(junk)) {
-                      _idxOf = m2.index;
-                      var charIdx = junkIdx + _idxOf;
-                      var _lftCharIdx = charIdx - 1;
-                      if (_lftCharIdx == -1 || interBound.test(mhstr[_lftCharIdx])) {
-                        lft2++;
-                        found = true;
-                        break;
-                      } else if (intraBound.test(mhstr[_lftCharIdx] + mhstr[charIdx])) {
-                        lft1++;
-                        found = true;
-                        break;
-                      }
-                    }
-                    if (found) {
-                      isPre = true;
-
-                      // identical to exact term refinement pass above
-                      refine.push(idxAcc, groupLen, _idxOf, termLen);
-                      idxAcc += refineMatch(m, k, _idxOf, termLen);
-                      group = term;
-                      groupLen = termLen;
-                      fullMatch = true;
-                      if (j == 0) start = idxAcc;
-                    }
-                  }
-                  if (!isPre) {
-                    disc = true;
-                    break;
-                  }
-                }
               }
             }
 
@@ -477,18 +267,9 @@ var uFuzzy = function () {
               fullMatch && rgt2++;
               isSuf = true;
             } else {
-              if (interRgt == 2) {
-                disc = true;
-                break;
-              }
-              if (withIntraBound && intraBound.test(mhstr[rgtCharIdx - 1] + mhstr[rgtCharIdx])) {
+              if (intraBound.test(mhstr[rgtCharIdx - 1] + mhstr[rgtCharIdx])) {
                 fullMatch && rgt1++;
                 isSuf = true;
-              } else {
-                if (interRgt == 1) {
-                  disc = true;
-                  break;
-                }
               }
             }
             if (fullMatch) {
@@ -500,14 +281,9 @@ var uFuzzy = function () {
 
           if (j > 0) inter += m[k - 1].length; // interFuzz
 
-          // TODO: group here is lowercased, which is okay for length cmp, but not more case-sensitive filts
-          if (!opts.intraFilt(term, group, idxAcc)) {
-            disc = true;
-            break;
-          }
           if (j < partsLen - 1) idxAcc += groupLen + m[k + 1].length;
         }
-        if (!disc) {
+        {
           info.idx[ii] = idxs[i];
           info.interLft2[ii] = lft2;
           info.interLft1[ii] = lft1;
@@ -526,36 +302,36 @@ var uFuzzy = function () {
           var refLen = refine.length;
           var ri = refLen > 0 ? 0 : Infinity;
           var lastRi = refLen - 4;
-          for (var _i5 = 2; _i5 < _m.length;) {
-            var _len2 = _m[_i5].length;
+          for (var _i2 = 2; _i2 < _m.length;) {
+            var _len2 = _m[_i2].length;
             if (ri <= lastRi && refine[ri] == _idxAcc) {
               var _groupLen = refine[ri + 1];
-              var _idxOf2 = refine[ri + 2];
+              var _idxOf = refine[ri + 2];
               var _termLen = refine[ri + 3];
 
               // advance to end of original (full) group match that includes intra-junk
-              var _j = _i5;
+              var _j = _i2;
               var v = '';
               for (var _len = 0; _len < _groupLen; _j++) {
                 v += _m[_j];
                 _len += _m[_j].length;
               }
-              _m.splice(_i5, _j - _i5, v);
-              _idxAcc += refineMatch(_m, _i5, _idxOf2, _termLen);
+              _m.splice(_i2, _j - _i2, v);
+              _idxAcc += refineMatch(_m, _i2, _idxOf, _termLen);
               ri += 4;
             } else {
               _idxAcc += _len2;
-              _i5++;
+              _i2++;
             }
           }
           _idxAcc = _m.index + _m[1].length;
           var ranges = info.ranges[ii] = [];
           var from = _idxAcc;
           var to = _idxAcc;
-          for (var _i6 = 2; _i6 < _m.length; _i6++) {
-            var _len3 = _m[_i6].length;
+          for (var _i3 = 2; _i3 < _m.length; _i3++) {
+            var _len3 = _m[_i3].length;
             _idxAcc += _len3;
-            if (_i6 % 2 == 0) to = _idxAcc;else if (_len3 > 0) {
+            if (_i3 % 2 == 0) to = _idxAcc;else if (_len3 > 0) {
               ranges.push(from, to);
               from = to = _idxAcc;
             }
@@ -687,11 +463,11 @@ var uFuzzy = function () {
           if (_idxs == null || _idxs.length == 0) continue;
           var _needle = needles[_ni];
           var _info = info(_idxs, haystack, _needle);
-          var order = opts.sort(_info, haystack, _needle);
+          var order = sort(_info, haystack);
 
           // offset idxs for concat'ing infos
           if (_ni > 0) {
-            for (var _i7 = 0; _i7 < order.length; _i7++) order[_i7] += retOrder.length;
+            for (var _i4 = 0; _i4 < order.length; _i4++) order[_i4] += retOrder.length;
           }
           for (var k in _info) {
             var _retInfo$k;
@@ -710,7 +486,7 @@ var uFuzzy = function () {
       split: split,
       filter: filter,
       info: info,
-      sort: opts.sort
+      sort: sort
     };
   }
   var latinize = function () {

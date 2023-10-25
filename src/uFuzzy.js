@@ -15,53 +15,7 @@ const LATIN_LOWER = 'a-z';
 
 const swapAlpha = (str, upper, lower) => str.replace(LATIN_UPPER, upper).replace(LATIN_LOWER, lower);
 
-const OPTS = {
-	// whether regexps use a /u unicode flag
-	unicode: false,
-
-	alpha: null,
-
-	// term segmentation & punct/whitespace merging
-	interSplit: "[^A-Za-z\\d']+",
-	intraSplit: "[a-z][A-Z]",
-
-	// intra bounds that will be used to increase lft1/rgt1 info counters
-	intraBound: "[A-Za-z]\\d|\\d[A-Za-z]|[a-z][A-Z]",
-
-	// inter-bounds mode
-	// 2 = strict (will only match 'man' on whitepace and punct boundaries: Mega Man, Mega_Man, mega.man)
-	// 1 = loose  (plus allowance for alpha-num and case-change boundaries: MegaMan, 0007man)
-	// 0 = any    (will match 'man' as any substring: megamaniac)
-	interLft: 0,
-	interRgt: 0,
-
-	// allowance between terms
-	interChars: '.',
-	interIns: inf,
-
-	// allowance between chars in terms
-	intraChars: "[a-z\\d']", // internally case-insensitive
-	intraIns: 0,
-
-	intraContr: "'[a-z]{1,2}\\b",
-
-	// multi-insert or single-error mode
-	intraMode: 0,
-
-	// single-error bounds for errors within terms, default requires exact first char
-	intraSlice: [1, inf],
-
-	// single-error tolerance toggles
-	intraSub: 0,
-	intraTrn: 0,
-	intraDel: 0,
-
-	// can post-filter matches that are too far apart in distance or length
-	// (since intraIns is between each char, it can accum to nonsense matches)
-	intraFilt: (term, match, index) => true, // should this also accept WIP info?
-
-	// final sorting fn
-	sort: (info, haystack, needle) => {
+const sort = (info, haystack, needle) => {
 		let {
 			idx,
 			chars,
@@ -94,7 +48,6 @@ const OPTS = {
 			// alphabetic
 			cmp(haystack[idx[ia]], haystack[idx[ib]])
 		));
-	},
 };
 
 const lazyRepeat = (chars, limit) => (
@@ -106,27 +59,25 @@ const lazyRepeat = (chars, limit) => (
 
 const mode2Tpl = '(?:\\b|_)';
 
-export default function uFuzzy(opts) {
-	opts = Object.assign({}, OPTS, opts);
-
-	let {
-		unicode,
-		interLft,
-		interRgt,
-		intraMode,
-		intraSlice,
-		intraIns,
-		intraSub,
-		intraTrn,
-		intraDel,
-		intraContr,
-		intraSplit: _intraSplit,
-		interSplit: _interSplit,
-		intraBound: _intraBound,
-		intraChars,
-	} = opts;
-
-	let alpha = opts.letters ?? opts.alpha;
+export default function uFuzzy() {
+	let unicode = false;
+	let alpha = null;
+	let _interSplit = "[^A-Za-z\\d']+";
+	let _intraSplit = "[a-z][A-Z]";
+	let _intraBound = "[A-Za-z]\\d|\\d[A-Za-z]|[a-z][A-Z]";
+	let interLft = 0;
+	let interRgt = 0;
+	let interChars = '.';
+	let interIns = inf;
+	let intraChars = "[a-z\\d']";
+	let intraIns = 0;
+	let intraContr = "'[a-z]{1,2}\\b";
+	let intraMode = 0;
+	let intraSlice = [1, inf];
+	let intraSub = 0;
+	let intraTrn = 0;
+	let intraDel = 0;
+	let intraFilt = (term, match, index) => true;
 
 	if (alpha != null) {
 		let upper = alpha.toLocaleUpperCase();
@@ -145,12 +96,12 @@ export default function uFuzzy(opts) {
 	const EXACTS_RE = new RegExp(quotedAny, 'gi' + uFlag);
 	const NEGS_RE = new RegExp(`(?:\\s+|^)-(?:${intraChars}+|${quotedAny})`, 'gi' + uFlag);
 
-	let { intraRules } = opts;
+	let intraRules = null;
 
 	if (intraRules == null) {
 		intraRules = p => {
 			// default is exact term matches only
-			let _intraSlice = OPTS.intraSlice, // requires first char
+			let _intraSlice = intraSlice, // requires first char
 				_intraIns = 0,
 				_intraSub = 0,
 				_intraTrn = 0,
@@ -326,7 +277,7 @@ export default function uFuzzy(opts) {
 		let preTpl = interLft == 2 ? mode2Tpl : '';
 		let sufTpl = interRgt == 2 ? mode2Tpl : '';
 
-		let interCharsTpl = sufTpl + lazyRepeat(opts.interChars, opts.interIns) + preTpl;
+		let interCharsTpl = sufTpl + lazyRepeat(interChars, interIns) + preTpl;
 
 		// capture at word level
 		if (capt > 0) {
@@ -594,7 +545,7 @@ export default function uFuzzy(opts) {
 					inter += m[k-1].length; // interFuzz
 
 				// TODO: group here is lowercased, which is okay for length cmp, but not more case-sensitive filts
-				if (!opts.intraFilt(term, group, idxAcc)) {
+				if (!intraFilt(term, group, idxAcc)) {
 					disc = true;
 					break;
 				}
@@ -828,7 +779,7 @@ export default function uFuzzy(opts) {
 
 				let needle = needles[ni];
 				let _info = info(idxs, haystack, needle);
-				let order = opts.sort(_info, haystack, needle);
+				let order = sort(_info, haystack, needle);
 
 				// offset idxs for concat'ing infos
 				if (ni > 0) {
@@ -860,7 +811,7 @@ export default function uFuzzy(opts) {
 		split,
 		filter,
 		info,
-		sort: opts.sort,
+		sort: sort,
 	};
 }
 
