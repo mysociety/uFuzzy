@@ -54,6 +54,7 @@ var uFuzzy = function () {
   var lazyRepeat = function lazyRepeat(chars, limit) {
     return limit == 0 ? '' : limit == 1 ? chars + '??' : limit == inf ? chars + '*?' : chars + "{0,".concat(limit, "}?");
   };
+  var mode2Tpl = '(?:\\b|_)';
   function uFuzzy() {
     var _interSplit = "[^A-Za-z\\d']+";
     var _intraSplit = "[a-z][A-Z]";
@@ -63,10 +64,51 @@ var uFuzzy = function () {
     var intraChars = "[a-z\\d']";
     var intraIns = 0;
     var intraContr = "'[a-z]{1,2}\\b";
+    var intraSlice = [1, inf];
+    var intraSub = 1;
+    var intraTrn = 1;
+    var intraDel = 1;
     var uFlag = '';
     var quotedAny = '".+?"';
     var EXACTS_RE = new RegExp(quotedAny, 'gi' + uFlag);
     var NEGS_RE = new RegExp("(?:\\s+|^)-(?:".concat(intraChars, "+|").concat(quotedAny, ")"), 'gi' + uFlag);
+    var intraRules = null;
+    if (intraRules == null) {
+      intraRules = function intraRules(p) {
+        // default is exact term matches only
+        var _intraSlice = intraSlice,
+          // requires first char
+          _intraIns = 0,
+          _intraSub = 0,
+          _intraTrn = 0,
+          _intraDel = 0;
+        var plen = p.length;
+
+        // prevent junk matches by requiring stricter rules for short terms
+        if (plen <= 4) {
+          if (plen >= 3) {
+            // one swap in non-first char when 3-4 chars
+            _intraTrn = Math.min(intraTrn, 1);
+
+            // or one insertion when 4 chars
+            if (plen == 4) _intraIns = Math.min(intraIns, 1);
+          }
+          // else exact match when 1-2 chars
+        }
+        // use supplied opts
+        else {
+          _intraSlice = intraSlice;
+          _intraIns = intraIns, _intraSub = intraSub, _intraTrn = intraTrn, _intraDel = intraDel;
+        }
+        return {
+          intraSlice: _intraSlice,
+          intraIns: _intraIns,
+          intraSub: _intraSub,
+          intraTrn: _intraTrn,
+          intraDel: _intraDel
+        };
+      };
+    }
     var intraSplit = new RegExp(_intraSplit, 'g' + uFlag);
     var interSplit = new RegExp(_interSplit, 'g' + uFlag);
     var trimRe = new RegExp('^' + _interSplit + '|' + _interSplit + '$', 'g' + uFlag);
@@ -109,18 +151,55 @@ var uFuzzy = function () {
 
       // allows single mutations within each term
       {
-        var intraInsTpl = lazyRepeat(intraChars, intraIns);
-
-        // capture at char level
-        if (capt == 2 && intraIns > 0) {
-          // sadly, we also have to capture the inter-term junk via parenth-wrapping .*?
-          // to accum other capture groups' indices for \b boosting during scoring
-          intraInsTpl = ')(' + intraInsTpl + ')(';
-        }
         reTpl = parts.map(function (p, pi) {
-          return p[0] === '"' ? escapeRegExp(p.slice(1, -1)) : p.split('').map(function (c, i, chars) {
-            return c;
-          }).join(intraInsTpl) + contrs[pi];
+          var _intraRules = intraRules(p),
+            intraSlice = _intraRules.intraSlice,
+            intraIns = _intraRules.intraIns,
+            intraSub = _intraRules.intraSub,
+            intraTrn = _intraRules.intraTrn,
+            intraDel = _intraRules.intraDel;
+          if (intraIns + intraSub + intraTrn + intraDel == 0) return p + contrs[pi];
+          if (p[0] === '"') return escapeRegExp(p.slice(1, -1));
+          var lftIdx = intraSlice[0];
+          var rgtIdx = intraSlice[1];
+          var lftChar = p.slice(0, lftIdx); // prefix
+          var rgtChar = p.slice(rgtIdx); // suffix
+
+          var chars = p.slice(lftIdx, rgtIdx);
+
+          // neg lookahead to prefer matching 'Test' instead of 'tTest' in ManifestTest or fittest
+          // but skip when search term contains leading repetition (aardvark, aaa)
+          if (intraIns == 1 && lftChar.length == 1 && lftChar != chars[0]) lftChar += '(?!' + lftChar + ')';
+          var numChars = chars.length;
+          var variants = [p];
+
+          // variants with single char substitutions
+          if (intraSub) {
+            for (var i = 0; i < numChars; i++) variants.push(lftChar + chars.slice(0, i) + intraChars + chars.slice(i + 1) + rgtChar);
+          }
+
+          // variants with single transpositions
+          if (intraTrn) {
+            for (var _i = 0; _i < numChars - 1; _i++) {
+              if (chars[_i] != chars[_i + 1]) variants.push(lftChar + chars.slice(0, _i) + chars[_i + 1] + chars[_i] + chars.slice(_i + 2) + rgtChar);
+            }
+          }
+
+          // variants with single char omissions
+          if (intraDel) {
+            for (var _i2 = 0; _i2 < numChars; _i2++) variants.push(lftChar + chars.slice(0, _i2 + 1) + '?' + chars.slice(_i2 + 1) + rgtChar);
+          }
+
+          // variants with single char insertions
+          if (intraIns) {
+            var intraInsTpl = lazyRepeat(intraChars, 1);
+            for (var _i3 = 0; _i3 < numChars; _i3++) variants.push(lftChar + chars.slice(0, _i3) + intraInsTpl + chars.slice(_i3) + rgtChar);
+          }
+          var reTpl = '(?:' + variants.join('|') + ')' + contrs[pi];
+
+          //	console.log(reTpl);
+
+          return reTpl;
         });
       }
 
@@ -128,7 +207,7 @@ var uFuzzy = function () {
 
       // this only helps to reduce initial matches early when they can be detected
       // TODO: might want a mode 3 that excludes _
-      var preTpl = '';
+      var preTpl = mode2Tpl;
       var sufTpl = '';
       var interCharsTpl = sufTpl + lazyRepeat(interChars, interIns) + preTpl;
 
@@ -162,7 +241,7 @@ var uFuzzy = function () {
           query.test(haystack[idx]) && out.push(idx);
         }
       } else {
-        for (var _i = 0; _i < haystack.length; _i++) query.test(haystack[_i]) && out.push(_i);
+        for (var _i4 = 0; _i4 < haystack.length; _i4++) query.test(haystack[_i4]) && out.push(_i4);
       }
       return out;
     };
@@ -213,6 +292,9 @@ var uFuzzy = function () {
         // leading junk
         var start = m.index + m[1].length;
         var idxAcc = start;
+        //	let span = m[0].length;
+
+        var disc = false;
         var lft2 = 0;
         var lft1 = 0;
         var rgt2 = 0;
@@ -256,9 +338,9 @@ var uFuzzy = function () {
               fullMatch && lft2++;
               isPre = true;
             } else {
-              if (intraBound.test(mhstr[lftCharIdx] + mhstr[lftCharIdx + 1])) {
-                fullMatch && lft1++;
-                isPre = true;
+              {
+                disc = true;
+                break;
               }
             }
 
@@ -283,7 +365,7 @@ var uFuzzy = function () {
 
           if (j < partsLen - 1) idxAcc += groupLen + m[k + 1].length;
         }
-        {
+        if (!disc) {
           info.idx[ii] = idxs[i];
           info.interLft2[ii] = lft2;
           info.interLft1[ii] = lft1;
@@ -302,36 +384,36 @@ var uFuzzy = function () {
           var refLen = refine.length;
           var ri = refLen > 0 ? 0 : Infinity;
           var lastRi = refLen - 4;
-          for (var _i2 = 2; _i2 < _m.length;) {
-            var _len2 = _m[_i2].length;
+          for (var _i5 = 2; _i5 < _m.length;) {
+            var _len2 = _m[_i5].length;
             if (ri <= lastRi && refine[ri] == _idxAcc) {
               var _groupLen = refine[ri + 1];
               var _idxOf = refine[ri + 2];
               var _termLen = refine[ri + 3];
 
               // advance to end of original (full) group match that includes intra-junk
-              var _j = _i2;
+              var _j = _i5;
               var v = '';
               for (var _len = 0; _len < _groupLen; _j++) {
                 v += _m[_j];
                 _len += _m[_j].length;
               }
-              _m.splice(_i2, _j - _i2, v);
-              _idxAcc += refineMatch(_m, _i2, _idxOf, _termLen);
+              _m.splice(_i5, _j - _i5, v);
+              _idxAcc += refineMatch(_m, _i5, _idxOf, _termLen);
               ri += 4;
             } else {
               _idxAcc += _len2;
-              _i2++;
+              _i5++;
             }
           }
           _idxAcc = _m.index + _m[1].length;
           var ranges = info.ranges[ii] = [];
           var from = _idxAcc;
           var to = _idxAcc;
-          for (var _i3 = 2; _i3 < _m.length; _i3++) {
-            var _len3 = _m[_i3].length;
+          for (var _i6 = 2; _i6 < _m.length; _i6++) {
+            var _len3 = _m[_i6].length;
             _idxAcc += _len3;
-            if (_i3 % 2 == 0) to = _idxAcc;else if (_len3 > 0) {
+            if (_i6 % 2 == 0) to = _idxAcc;else if (_len3 > 0) {
               ranges.push(from, to);
               from = to = _idxAcc;
             }
@@ -467,7 +549,7 @@ var uFuzzy = function () {
 
           // offset idxs for concat'ing infos
           if (_ni > 0) {
-            for (var _i4 = 0; _i4 < order.length; _i4++) order[_i4] += retOrder.length;
+            for (var _i7 = 0; _i7 < order.length; _i7++) order[_i7] += retOrder.length;
           }
           for (var k in _info) {
             var _retInfo$k;

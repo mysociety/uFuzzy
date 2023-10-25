@@ -59,6 +59,8 @@ const lazyRepeat = (chars, limit) => (
 	               chars + `{0,${limit}}?`
 );
 
+const mode2Tpl = '(?:\\b|_)';
+
 function uFuzzy() {
 	let _interSplit = "[^A-Za-z\\d']+";
 	let _intraSplit = "[a-z][A-Z]";
@@ -68,12 +70,60 @@ function uFuzzy() {
 	let intraChars = "[a-z\\d']";
 	let intraIns = 0;
 	let intraContr = "'[a-z]{1,2}\\b";
+	let intraSlice = [1, inf];
+	let intraSub = 1;
+	let intraTrn = 1;
+	let intraDel = 1;
 
 	let uFlag = '';
 
 	const quotedAny = '".+?"';
 	const EXACTS_RE = new RegExp(quotedAny, 'gi' + uFlag);
 	const NEGS_RE = new RegExp(`(?:\\s+|^)-(?:${intraChars}+|${quotedAny})`, 'gi' + uFlag);
+
+	let intraRules = null;
+
+	if (intraRules == null) {
+		intraRules = p => {
+			// default is exact term matches only
+			let _intraSlice = intraSlice, // requires first char
+				_intraIns = 0,
+				_intraSub = 0,
+				_intraTrn = 0,
+				_intraDel = 0;
+
+			let plen = p.length;
+
+			// prevent junk matches by requiring stricter rules for short terms
+			if (plen <= 4) {
+				if (plen >= 3) {
+					// one swap in non-first char when 3-4 chars
+					_intraTrn = Math.min(intraTrn, 1);
+
+					// or one insertion when 4 chars
+					if (plen == 4)
+						_intraIns = Math.min(intraIns, 1);
+				}
+				// else exact match when 1-2 chars
+			}
+			// use supplied opts
+			else {
+				_intraSlice = intraSlice;
+				_intraIns = intraIns,
+				_intraSub = intraSub,
+				_intraTrn = intraTrn,
+				_intraDel = intraDel;
+			}
+
+			return {
+				intraSlice: _intraSlice,
+				intraIns: _intraIns,
+				intraSub: _intraSub,
+				intraTrn: _intraTrn,
+				intraDel: _intraDel,
+			};
+		};
+	}
 
 	let intraSplit = new RegExp(_intraSplit, 'g' + uFlag);
 	let interSplit = new RegExp(_interSplit, 'g' + uFlag);
@@ -116,26 +166,78 @@ function uFuzzy() {
 
 		// allows single mutations within each term
 		{
-			let intraInsTpl = lazyRepeat(intraChars, intraIns);
+			reTpl = parts.map((p, pi) => {
+				let {
+					intraSlice,
+					intraIns,
+					intraSub,
+					intraTrn,
+					intraDel,
+				} = intraRules(p);
 
-			// capture at char level
-			if (capt == 2 && intraIns > 0) {
-				// sadly, we also have to capture the inter-term junk via parenth-wrapping .*?
-				// to accum other capture groups' indices for \b boosting during scoring
-				intraInsTpl = ')(' + intraInsTpl + ')(';
-			}
+				if (intraIns + intraSub + intraTrn + intraDel == 0)
+					return p + contrs[pi];
 
-			reTpl = parts.map((p, pi) => p[0] === '"' ? escapeRegExp(p.slice(1, -1)) :  p.split('').map((c, i, chars) => {
+				if (p[0] === '"')
+					return escapeRegExp(p.slice(1, -1));
 
-				return c;
-			}).join(intraInsTpl) + contrs[pi]);
+				let lftIdx = intraSlice[0];
+				let rgtIdx = intraSlice[1];
+				let lftChar = p.slice(0, lftIdx); // prefix
+				let rgtChar = p.slice(rgtIdx);    // suffix
+
+				let chars = p.slice(lftIdx, rgtIdx);
+
+				// neg lookahead to prefer matching 'Test' instead of 'tTest' in ManifestTest or fittest
+				// but skip when search term contains leading repetition (aardvark, aaa)
+				if (intraIns == 1 && lftChar.length == 1 && lftChar != chars[0])
+					lftChar += '(?!' + lftChar + ')';
+
+				let numChars = chars.length;
+
+				let variants = [p];
+
+				// variants with single char substitutions
+				if (intraSub) {
+					for (let i = 0; i < numChars; i++)
+						variants.push(lftChar + chars.slice(0, i) + intraChars + chars.slice(i + 1) + rgtChar);
+				}
+
+				// variants with single transpositions
+				if (intraTrn) {
+					for (let i = 0; i < numChars - 1; i++) {
+						if (chars[i] != chars[i+1])
+							variants.push(lftChar + chars.slice(0, i) + chars[i+1] + chars[i] + chars.slice(i + 2) + rgtChar);
+					}
+				}
+
+				// variants with single char omissions
+				if (intraDel) {
+					for (let i = 0; i < numChars; i++)
+						variants.push(lftChar + chars.slice(0, i + 1) + '?' + chars.slice(i + 1) + rgtChar);
+				}
+
+				// variants with single char insertions
+				if (intraIns) {
+					let intraInsTpl = lazyRepeat(intraChars, 1);
+
+					for (let i = 0; i < numChars; i++)
+						variants.push(lftChar + chars.slice(0, i) + intraInsTpl + chars.slice(i) + rgtChar);
+				}
+
+				let reTpl = '(?:' + variants.join('|') + ')' + contrs[pi];
+
+			//	console.log(reTpl);
+
+				return reTpl;
+			});
 		}
 
 	//	console.log(reTpl);
 
 		// this only helps to reduce initial matches early when they can be detected
 		// TODO: might want a mode 3 that excludes _
-		let preTpl = '';
+		let preTpl = mode2Tpl ;
 		let sufTpl = '';
 
 		let interCharsTpl = sufTpl + lazyRepeat(interChars, interIns) + preTpl;
@@ -243,6 +345,9 @@ function uFuzzy() {
 			let start = m.index + m[1].length;
 
 			let idxAcc = start;
+		//	let span = m[0].length;
+
+			let disc = false;
 			let lft2 = 0;
 			let lft1 = 0;
 			let rgt2 = 0;
@@ -294,10 +399,9 @@ function uFuzzy() {
 						isPre = true;
 					}
 					else {
-
-						if (intraBound.test(mhstr[lftCharIdx] + mhstr[lftCharIdx + 1])) {
-							fullMatch && lft1++;
-							isPre = true;
+						{
+							disc = true;
+							break;
 						}
 					}
 
@@ -332,7 +436,7 @@ function uFuzzy() {
 					idxAcc += groupLen + m[k+1].length;
 			}
 
-			{
+			if (!disc) {
 				info.idx[ii]       = idxs[i];
 				info.interLft2[ii] = lft2;
 				info.interLft1[ii] = lft1;
