@@ -65,7 +65,7 @@ export default function uFuzzy() {
 	let _interSplit = "[^A-Za-z\\d']+";
 	let _intraSplit = "[a-z][A-Z]";
 	let _intraBound = "[A-Za-z]\\d|\\d[A-Za-z]|[a-z][A-Z]";
-	let interLft = 0;
+	let interLft = 2;
 	let interRgt = 0;
 	let interChars = '.';
 	let interIns = inf;
